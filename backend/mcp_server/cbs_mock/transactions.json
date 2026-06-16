@@ -1,0 +1,7 @@
+[
+  {"transaction_id": "UPI42698173", "customer_id": "CUST1001", "date": "2026-06-15", "amount": 8500, "merchant": "Rahul Verma", "rail": "UPI", "status": "stuck_npci", "npci_ref": "NPCI-6251-9844-7710"},
+  {"transaction_id": "UPI42698112", "customer_id": "CUST1001", "date": "2026-06-14", "amount": 1280, "merchant": "FirstCry Mumbai", "rail": "UPI", "status": "success", "category": "baby_care"},
+  {"transaction_id": "UPI42697188", "customer_id": "CUST1001", "date": "2026-06-05", "amount": 165000, "merchant": "ACME Technologies Salary", "rail": "NEFT", "status": "success", "category": "salary"},
+  {"transaction_id": "UPI42695242", "customer_id": "CUST1001", "date": "2026-05-18", "amount": 2450, "merchant": "Mothercare", "rail": "UPI", "status": "success", "category": "baby_care"},
+  {"transaction_id": "UPI42692155", "customer_id": "CUST1001", "date": "2026-04-21", "amount": 3150, "merchant": "Apollo Cradle", "rail": "CARD", "status": "success", "category": "medical"}
+]

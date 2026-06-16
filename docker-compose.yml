@@ -1,0 +1,36 @@
+services:
+  backend:
+    build: ./backend
+    ports:
+      - "8000:8000"
+    environment:
+      LANGSMITH_TRACING: "true"
+      LANGSMITH_PROJECT: "lifepulse-hackathon"
+      REDIS_URL: "redis://redis:6379/0"
+      DATABASE_URL: "postgresql://lifepulse:lifepulse@postgres:5432/lifepulse"
+    depends_on:
+      - redis
+      - postgres
+  frontend:
+    build: ./frontend
+    ports:
+      - "5173:5173"
+    depends_on:
+      - backend
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    command: tunnel --no-autoupdate --url http://frontend:5173
+    depends_on:
+      - frontend
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_DB: lifepulse
+      POSTGRES_USER: lifepulse
+      POSTGRES_PASSWORD: lifepulse
+    ports:
+      - "5432:5432"

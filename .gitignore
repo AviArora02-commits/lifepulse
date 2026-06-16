@@ -1,0 +1,7 @@
+backend/__pycache__/
+backend/**/__pycache__/
+frontend/node_modules/
+frontend/dist/
+generated_documents/
+.env
+.DS_Store
