@@ -101,24 +101,34 @@ function staticDemo(message) {
   };
 }
 
+function list(value) {
+  return Array.isArray(value) ? value : [];
+}
+
 function Chip({ children, tone = "green" }) {
   return <span className={`chip ${tone}`}>{children}</span>;
 }
 
 function Message({ message }) {
+  const payload = message.payload || {};
   if (message.type === "action") return <div className="system"><Chip>{message.text}</Chip></div>;
   if (message.type === "escalation") return <div className="system"><Chip tone="red">{message.text}</Chip></div>;
-  if (message.type === "document") return <div className="delivery-card"><b>Digitally signed statement</b><p>{message.text}</p><small>{message.payload?.offer}</small><button>Download PDF</button></div>;
+  if (message.type === "document") return <div className="delivery-card"><b>Digitally signed statement</b><p>{message.text}</p><small>{payload.offer}</small><button>Download PDF</button></div>;
   if (message.type === "otp") return <div className="delivery-card compact"><b>Inline OTP gate</b><input placeholder="Enter OTP" defaultValue="123456" /><button>Verify</button></div>;
   if (message.type === "recommendation") {
+    const products = list(payload.products).length
+      ? list(payload.products)
+      : list(payload.event?.products_triggered).map((name) => ({ name, summary: "Recommended from the detected life-event signal." }));
+    const why = list(payload.why).length ? list(payload.why) : list(payload.event?.evidence);
     return <div className="recommendation-card">
-      <b>New baby signal detected</b>
-      {message.payload.products.map((p) => <p key={p.name}><span>{p.name}</span>{p.summary}</p>)}
-      <details><summary>Why are you telling me this?</summary>{message.payload.why.join("; ")}</details>
+      <b>{payload.event?.event_type ? `${payload.event.event_type.replaceAll("_", " ")} signal detected` : "Life event signal detected"}</b>
+      {products.map((p) => <p key={p.name}><span>{p.name}</span>{p.summary}</p>)}
+      {!products.length && <p><span>RM review</span>Recommendation queued until confidence is high enough.</p>}
+      <details><summary>Why are you telling me this?</summary>{why.join("; ") || "Behavioral signals crossed the LifePulse review threshold."}</details>
       <button>Start with one OTP</button>
     </div>;
   }
-  if (message.type === "receipt") return <div className="delivery-card compact"><b>Resolution receipt</b><p>{message.payload.done?.join(" - ")}</p><small>SR: {message.payload.sr_number || "Not required"}</small></div>;
+  if (message.type === "receipt") return <div className="delivery-card compact"><b>Resolution receipt</b><p>{list(payload.done).join(" - ") || message.text}</p><small>SR: {payload.sr_number || "Not required"}</small></div>;
   return <div className={`bubble ${message.sender === "customer" ? "me" : "agent"}`}>{message.text}</div>;
 }
 
@@ -173,14 +183,15 @@ function ChatWindow({ language, largeText, onEscalation }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ session_id: sessionId, customer_id: "CUST1001", message: customerMessage, language })
       });
-      if (!res.ok) throw new Error("api unavailable");
+      if (!res.ok || !res.headers.get("content-type")?.includes("application/json")) throw new Error("api unavailable");
       data = await res.json();
     } catch {
       data = staticDemo(customerMessage);
     }
-    setSessionId(data.session.session_id);
-    setState(data.session.current_state);
-    setMessages(data.session.messages);
+    if (!data?.session || !Array.isArray(data.messages)) data = staticDemo(customerMessage);
+    setSessionId(data.session.session_id || sessionId);
+    setState(data.session.current_state || "CLOSE");
+    setMessages(data.messages);
     if (data.session.rm_brief) onEscalation(data.session.rm_brief);
   };
   return <section className={`phone ${largeText ? "large" : ""}`}>
@@ -206,7 +217,10 @@ function RMDashboard({ escalation, metrics }) {
       { agent_id: "transaction_resolver", action_type: "resolve", confidence: .91 },
       { agent_id: "audit_logger", action_type: "receipt", confidence: 1 }
     ];
-    const load = () => fetch(endpoint("/api/audit")).then((r) => r.json()).then(setAudit).catch(() => setAudit(fallbackAudit));
+    const load = () => fetch(endpoint("/api/audit"))
+      .then((r) => r.headers.get("content-type")?.includes("application/json") ? r.json() : fallbackAudit)
+      .then((rows) => setAudit(Array.isArray(rows) ? rows : fallbackAudit))
+      .catch(() => setAudit(fallbackAudit));
     const id = setInterval(load, 2500);
     load();
     return () => clearInterval(id);
@@ -220,9 +234,9 @@ function RMDashboard({ escalation, metrics }) {
     </div>
     <h3>Active escalation brief</h3>
     {escalation ? <article className="rm-card active">
-      <div className="rm-top"><b>{escalation.customer_snapshot.name}</b><Chip tone={escalation.sentiment_score > 0.8 ? "red" : "amber"}>Sentiment {Math.round(escalation.sentiment_score * 100)}%</Chip></div>
+      <div className="rm-top"><b>{escalation.customer_snapshot?.name || "Customer"}</b><Chip tone={escalation.sentiment_score > 0.8 ? "red" : "amber"}>Sentiment {Math.round((escalation.sentiment_score || 0.75) * 100)}%</Chip></div>
       <p>{escalation.issue_summary}</p>
-      <p><b>Do not say:</b> {escalation.do_not_say.join(", ")}</p>
+      <p><b>Do not say:</b> {list(escalation.do_not_say).join(", ") || "Do not ask the customer to repeat context."}</p>
       <p><b>Recommended:</b> {escalation.recommended_resolution}</p>
       <button><PhoneCall size={16} /> Take this conversation</button>
     </article> : <article className="rm-card empty"><Clock3 /> Try the RM handoff scenario to light up the brief.</article>}
@@ -249,7 +263,10 @@ function App() {
   const [escalation, setEscalation] = useState(null);
   const [metrics, setMetrics] = useState(null);
   useEffect(() => {
-    const tick = () => fetch(endpoint("/api/metrics/live")).then((r) => r.json()).then(setMetrics).catch(() => setMetrics({
+    const tick = () => fetch(endpoint("/api/metrics/live"))
+      .then((r) => r.headers.get("content-type")?.includes("application/json") ? r.json() : Promise.reject(new Error("static host")))
+      .then(setMetrics)
+      .catch(() => setMetrics({
       avg_resolution_time: "4 minutes",
       branch_visits_deflected: 176,
       resolved: 286,
